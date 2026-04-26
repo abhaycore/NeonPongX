@@ -1,0 +1,709 @@
+You are a SENIOR Python Game Developer with 15+ years of experience in game 
+architecture, physics simulation, and UI/UX design. Your task is to build the 
+most advanced, feature-rich Ping Pong game ever created using ONLY Python's 
+built-in `turtle` module and standard library — no pygame, no PIL, no external 
+dependencies whatsoever.
+
+This is not a tutorial project. This is a MASTERPIECE. Every system must be 
+engineered with precision. The final product must feel like a commercial-grade 
+arcade game running inside turtle.
+
+═══════════════════════════════════════════════════════════
+                    PROJECT ARCHITECTURE
+═══════════════════════════════════════════════════════════
+
+Filename     : ultimate_pong.py
+Entry point  : python ultimate_pong.py
+Python ver   : 3.8+
+Dependencies : turtle, time, math, random, json, os, 
+               colorsys, winsound (Windows) / os (Mac/Linux)
+
+Use STRICT Object-Oriented Programming. Every system is a 
+class. No spaghetti code. Structure must be:
+
+  ultimate_pong.py
+  ├── CONFIG (global constants block)
+  ├── class SoundEngine
+  ├── class ParticleSystem
+  ├── class AnimatedBackground  
+  ├── class PowerUp
+  ├── class Ball
+  ├── class Paddle
+  ├── class AIController
+  ├── class ScoreBoard
+  ├── class StatsTracker
+  ├── class GameStateManager
+  ├── class MainMenu
+  ├── class GameEngine (orchestrates everything)
+  └── if __name__ == "__main__": → launch GameEngine
+
+═══════════════════════════════════════════════════════════
+             SECTION 1: CONFIGURATION BLOCK
+═══════════════════════════════════════════════════════════
+
+At the top of the file, define ALL magic numbers as named 
+constants grouped by category:
+
+  # SCREEN
+  SCREEN_WIDTH  = 900
+  SCREEN_HEIGHT = 650
+  BG_COLOR      = "#0a0a1a"
+  FPS_TARGET    = 60
+
+  # PADDLE
+  PADDLE_WIDTH      = 12
+  PADDLE_HEIGHT     = 90
+  PADDLE_SPEED      = 6
+  PADDLE_COLOR_P1   = "#00ffff"   # cyan
+  PADDLE_COLOR_P2   = "#ff4da6"   # hot pink
+  PADDLE_GLOW_STEPS = 5
+
+  # BALL
+  BALL_START_SPEED  = 5.0
+  BALL_MAX_SPEED    = 14.0
+  BALL_SPEED_INC    = 0.35
+  BALL_SIZE         = 10
+  BALL_TRAIL_LENGTH = 12
+
+  # POWER-UPS
+  POWERUP_SPAWN_INTERVAL = 8   # seconds
+  POWERUP_DURATION       = 7   # seconds
+  POWERUP_TYPES = ["SPEED_BOOST","ENLARGE","SHRINK_OPP",
+                   "MULTI_BALL","GHOST","FREEZE","REVERSE"]
+
+  # AI
+  AI_EASY_SPEED   = 3
+  AI_MEDIUM_SPEED = 5
+  AI_HARD_SPEED   = 7
+  AI_PERFECT_SPEED = 9
+  AI_REACTION_DELAY_EASY   = 0.35   # seconds of lag
+  AI_REACTION_DELAY_MEDIUM = 0.18
+  AI_REACTION_DELAY_HARD   = 0.06
+  AI_REACTION_DELAY_PERFECT = 0.0
+
+  # SCORING
+  WIN_SCORE     = 11
+  MUST_WIN_BY   = 2   # like real ping pong rules
+
+  # VISUAL
+  TRAIL_FADE_FACTOR = 0.75
+  PARTICLE_COUNT    = 18
+  PARTICLE_LIFETIME = 45   # frames
+  STAR_COUNT        = 80
+  NEBULA_COUNT      = 5
+
+═══════════════════════════════════════════════════════════
+          SECTION 2: MAIN MENU SYSTEM (class MainMenu)
+═══════════════════════════════════════════════════════════
+
+Build a FULLY ANIMATED main menu rendered entirely in turtle:
+
+  ┌─────────────────────────────────────────┐
+  │                                         │
+  │     ██████  ██████  ███  ██  ██████     │  ← ASCII art
+  │     ██  ██  ██  ██  ██ ██   ██          │    title with
+  │     ██████  ██  ██  ████    ██  ███     │    letter-by-letter
+  │     ██      ██  ██  ██ ██   ██  ██      │    draw animation
+  │     ██      ██████  ██  ██  ██████      │
+  │                                         │
+  │          ─── ULTIMATE EDITION ───       │  ← subtitle pulses
+  │                                         │
+  │     [1]  1 PLAYER    (vs AI)            │  ← menu items glow
+  │     [2]  2 PLAYERS   (local)            │    on hover via
+  │     [3]  TOURNAMENT  (3 rounds)         │    keyboard nav
+  │     [4]  SETTINGS                       │
+  │     [5]  HALL OF FAME                   │
+  │     [ESC] QUIT                          │
+  │                                         │
+  │     WASD + ARROWS   |   FPS: 60         │  ← animated footer
+  └─────────────────────────────────────────┘
+
+  - Title draws itself letter by letter on startup (typewriter)
+  - Stars twinkle in background (brightness oscillation)
+  - "ULTIMATE EDITION" subtitle has sine-wave pulsing opacity
+  - Menu items cycle through glow colors when selected
+  - Press [1-5] to navigate; ENTER to select
+  - Smooth fade-in/fade-out transitions between screens
+  - Background has 5 slowly drifting colored nebula blobs
+
+═══════════════════════════════════════════════════════════
+            SECTION 3: ANIMATED BACKGROUND
+                  (class AnimatedBackground)
+═══════════════════════════════════════════════════════════
+
+The game background is NOT static. It is a living space scene:
+
+  STARS:
+  - 80 stars with x,y positions, sizes (1-3), and phase offsets
+  - Each star's brightness = 0.4 + 0.6 * sin(time * speed + phase)
+  - Color oscillates between dim white and bright white/yellow
+  - Every 300 frames, 3 random stars become "shooting stars"
+  - Shooting stars: animate a streak across screen, then vanish
+
+  SHOOTING STARS:
+  - Triggered randomly every 5-10 seconds
+  - Move diagonally at high speed with a fading trail
+  - Trail uses 6 progressively smaller/dimmer turtle stamps
+
+  CENTER DIVIDER:
+  - Dashed vertical line in the center (not solid)
+  - Each dash slowly pulses opacity (sine wave)
+  - Color matches the last player who scored (victory flash)
+
+  COURT GLOW ZONES:
+  - Left third of screen has faint cyan radial glow (P1 side)
+  - Right third has faint pink radial glow (P2 side)
+  - Glow intensity increases when that player's score is higher
+
+  FRAME COUNTER & FPS DISPLAY:
+  - Top-left corner: live FPS counter (updates every 30 frames)
+  - Calculated as: 1 / actual_frame_time
+
+═══════════════════════════════════════════════════════════
+              SECTION 4: BALL PHYSICS (class Ball)
+═══════════════════════════════════════════════════════════
+
+The ball is a PHYSICS OBJECT, not just a moving square:
+
+  TRAIL SYSTEM:
+  - Store last 12 positions in a deque
+  - Each past position rendered as a progressively smaller,
+    more transparent circle
+  - Trail colors cycle through ball's current color hue
+  - Trail stretches/compresses based on ball speed (motion blur)
+
+  PHYSICS:
+  - dx, dy components (floating point for sub-pixel precision)
+  - On wall bounce (top/bottom): dy *= -1 with 2% randomness
+    added to prevent infinite horizontal loops
+  - On paddle hit: 
+      * Compute hit_position = (ball.y - paddle.y) / paddle_height
+      * Map hit_position (-1 to 1) → bounce angle (-60° to 60°)
+      * Preserve current speed magnitude, apply new angle
+      * Speed increases by BALL_SPEED_INC per paddle hit
+      * Speed capped at BALL_MAX_SPEED
+  - Ball starts each round from center with random angle between
+    -30° and 30° (never straight horizontal)
+
+  SPIN SYSTEM:
+  - If paddle is moving when it hits ball, add spin
+  - spin value (float) affects dy slightly each frame
+  - spin decays by 5% each frame toward 0
+  - Spinning ball has a slight arc trajectory (realistic)
+
+  MULTI-BALL MODE:
+  - When MULTI_BALL power-up active, spawn 2 extra balls
+  - Each extra ball inherits current speed but random direction
+  - Points only scored by original ball; extras are chaos agents
+  - Extra balls disappear after power-up duration ends
+  - Extra balls rendered in different colors (orange, green)
+
+  GHOST BALL MODE:
+  - When GHOST power-up active for a player, their paddle 
+    becomes semi-transparent AND the ball passes through 
+    the opponent's paddle for 3 seconds
+  - Ball rendered with dashed/dotted outline during ghost mode
+
+  VISUAL FX ON SCORE:
+  - When ball passes a paddle wall, trigger SCREEN FLASH:
+      * Flash screen border the scoring player's color
+      * Rapidly fade out over 12 frames
+  - Camera shake effect: offset all turtle drawings by
+    random(−8, 8) on x and y for 8 frames, then return to 0
+
+═══════════════════════════════════════════════════════════
+            SECTION 5: PADDLES (class Paddle)
+═══════════════════════════════════════════════════════════
+
+  RENDERING:
+  - Draw paddle as a rounded rectangle (simulate with 
+    overlapping turtle shapes or stamp with polygon)
+  - Paddle has a GLOW effect: draw 5 progressively larger, 
+    more transparent copies behind it in the player's color
+  - Glow intensity pulses when paddle recently hit the ball
+    (glow_timer counts down from 20 frames after each hit)
+
+  MOVEMENT:
+  - Smooth acceleration: paddle has velocity, not instant speed
+      * vel increases by 1.5 each frame key is held
+      * vel decays by 0.85 each frame when key released
+      * vel clamped to ±PADDLE_SPEED
+  - Cannot go beyond top/bottom walls (with 10px margin)
+
+  SIZE CHANGES:
+  - Normal: 90px tall
+  - ENLARGE power-up: animate growth to 140px over 15 frames
+  - SHRINK_OPP power-up: opponent shrinks to 45px over 15 frames
+  - Size change animates smoothly (linear interpolation)
+  - On power-up expiry, animate back to normal size
+
+  HIT FEEDBACK:
+  - On ball contact: paddle briefly flashes white (3 frames)
+  - Subtle "squish" animation: paddle compresses 8px on hit axis
+    and rebounds over 6 frames (spring effect)
+
+═══════════════════════════════════════════════════════════
+         SECTION 6: AI CONTROLLER (class AIController)
+═══════════════════════════════════════════════════════════
+
+Build a TRUE AI, not just "follow the ball" logic:
+
+  DIFFICULTY LEVELS:
+  ┌──────────┬──────────┬────────────────┬───────────────────┐
+  │ Level    │ Speed    │ Reaction Delay │ Prediction Error  │
+  ├──────────┼──────────┼────────────────┼───────────────────┤
+  │ EASY     │ 3 px/f   │ 350ms lag      │ ±60px random      │
+  │ MEDIUM   │ 5 px/f   │ 180ms lag      │ ±25px random      │
+  │ HARD     │ 7 px/f   │  60ms lag      │ ±8px random       │
+  │ PERFECT  │ 9 px/f   │   0ms lag      │ 0px (unbeatable)  │
+  └──────────┴──────────┴────────────────┴───────────────────┘
+
+  PREDICTION ENGINE (HARD + PERFECT):
+  - AI does NOT just follow ball.y
+  - It calculates WHERE the ball will be when it reaches 
+    the AI's x-position using physics simulation:
+      1. Copy ball's current x, y, dx, dy
+      2. Step simulation forward until x == paddle_x
+      3. Account for wall bounces during simulation
+      4. Target that predicted y (with difficulty error added)
+  - Recalculates prediction every time ball changes direction
+
+  ADAPTIVE AI (MEDIUM+):
+  - Tracks player's last 10 hit positions on paddle
+  - Detects if player always aims high or low → compensates
+  - If AI is winning by 4+ points: introduces fake hesitation
+    (mimics difficulty to keep game interesting)
+  - If AI is losing by 4+ points: reduces error slightly
+
+  RETURN STRATEGY:
+  - Instead of always centering the ball return:
+      * If AI is ahead: aim for safe center returns
+      * If AI is behind: aim for sharp-angle returns 
+        (hit edge of own paddle = extreme angle)
+  - AI deliberately targets opponent's moving direction 
+    (forces them to reverse, harder to reach)
+
+  SETTINGS PAGE:
+  - Allow choosing AI difficulty before game start
+  - Animated difficulty selector with visual preview of AI speed
+
+═══════════════════════════════════════════════════════════
+       SECTION 7: POWER-UP SYSTEM (class PowerUp)
+═══════════════════════════════════════════════════════════
+
+7 unique power-ups that spawn randomly every 8 seconds:
+
+  ┌─────────────┬────────┬─────────────────────────────────┐
+  │ Power-Up    │ Color  │ Effect                          │
+  ├─────────────┼────────┼─────────────────────────────────┤
+  │ SPEED_BOOST │ Yellow │ Catcher's paddle speed ×2       │
+  │ ENLARGE     │ Green  │ Catcher's paddle grows 55%      │
+  │ SHRINK_OPP  │ Red    │ Opponent's paddle shrinks 50%   │
+  │ MULTI_BALL  │ Orange │ 2 extra chaos balls spawn       │
+  │ GHOST       │ White  │ Your paddle phases through ball │
+  │ FREEZE      │ Blue   │ Opponent paddle frozen 3 sec    │
+  │ REVERSE     │ Purple │ Opponent's controls inverted    │
+  └─────────────┴────────┴─────────────────────────────────┘
+
+  SPAWNING:
+  - Appears at random y position in center zone (x: ±150)
+  - Floats up and down with sine wave animation
+  - Slowly rotates (text inside rotates, or icon spins)
+  - Pulses with glow aura in its respective color
+  - Has a circular COUNTDOWN RING around it (shrinks over 5 sec)
+  - Disappears if not collected within 5 seconds
+  - NEVER spawns during a MULTI_BALL event
+
+  COLLECTION:
+  - Ball touches power-up → power-up collected by NEAREST PLAYER
+  - Collection triggers burst particle explosion in power-up color
+  - Power-up name displayed briefly on collecting player's side
+  - Duration countdown shown as thin progress bar under scoreboard
+
+  STACKING RULES:
+  - Max 1 active power-up per player at a time
+  - New collection replaces old one (old effect immediately ends)
+  - Cannot collect GHOST if opponent has GHOST active
+
+═══════════════════════════════════════════════════════════
+        SECTION 8: PARTICLE SYSTEM (class ParticleSystem)
+═══════════════════════════════════════════════════════════
+
+A full 2D particle engine running inside turtle:
+
+  PARTICLE PROPERTIES (per particle):
+  - x, y           : current position
+  - vx, vy         : velocity
+  - life           : current lifetime (frames)
+  - max_life       : total lifetime assigned at birth
+  - size           : current render size
+  - color_start    : RGB tuple at birth
+  - color_end      : RGB tuple at death
+  - gravity        : downward acceleration per frame
+
+  PARTICLE BEHAVIORS:
+  - Color interpolated each frame: lerp(color_start, color_end, 
+    1 - life/max_life)
+  - Size shrinks linearly: size * (life / max_life)
+  - Velocity has 2% random jitter each frame (turbulence)
+
+  EMISSION EVENTS:
+  ┌──────────────────────┬──────────────────────────────────┐
+  │ Trigger              │ Particle Effect                  │
+  ├──────────────────────┼──────────────────────────────────┤
+  │ Ball hits paddle     │ 12 sparks in paddle's color      │
+  │ Ball hits wall       │ 8 white sparks at contact point  │
+  │ Power-up collected   │ 20 burst particles (power color) │
+  │ Player scores        │ 30 celebratory particles P color │
+  │ Game won             │ Continuous 200-particle firework │
+  └──────────────────────┴──────────────────────────────────┘
+
+  FIREWORKS (on game win):
+  - Every 0.4 seconds, launch a firework from random position
+  - Each firework = 1 rocket particle going up, then EXPLODES
+    into 25 radial particles in random vibrant HSV colors
+  - Run for 5 seconds on the winning screen
+
+═══════════════════════════════════════════════════════════
+           SECTION 9: SCOREBOARD (class ScoreBoard)
+═══════════════════════════════════════════════════════════
+
+  LAYOUT:
+  ┌───────────────────────────────────────────────────┐
+  │  P1 NAME     ║  11 : 7  ║      P2 NAME           │
+  │  [■■■■■■■□□] ║  ROUND 2 ║  [□□□■■■■■■■]         │
+  │  BEST: 13pts ║          ║  BEST: 8 pts           │
+  └───────────────────────────────────────────────────┘
+
+  FEATURES:
+  - Player names entered on a "name entry" screen before game
+  - Score numbers animate when they change:
+      * Number "bounces" (scale up 150%, then back to 100%
+        over 20 frames using sine easing)
+      * Brief color flash in scorer's color
+  - Progress bars (segmented blocks) show score vs win target
+  - Round tracker in center (for tournament mode)
+  - "Match Point" text appears when either player is 1 point away
+    → "MATCH POINT" pulsing in red below the scores
+  - Deuce indicator: "DEUCE" shown when score is tied at 10-10
+
+═══════════════════════════════════════════════════════════
+         SECTION 10: TOURNAMENT MODE
+═══════════════════════════════════════════════════════════
+
+  A best-of-3 tournament system:
+
+  - Players enter names once
+  - Play 3 rounds (first to win 2 rounds wins tournament)
+  - Between rounds: ROUND SUMMARY SCREEN shows:
+      * Round winner's name in large glowing text
+      * Rally stats for that round (longest rally, avg speed)
+      * "ROUND X WINNER: [NAME]" with mini firework effect
+      * 5-second countdown before next round starts
+  - Tournament bracket displayed on-screen (simple 3-box visual)
+  - Final tournament winner gets HALL OF FAME entry
+
+═══════════════════════════════════════════════════════════
+        SECTION 11: STATS & HALL OF FAME SYSTEM
+              (class StatsTracker)
+═══════════════════════════════════════════════════════════
+
+  REAL-TIME IN-GAME STATS (shown on pause screen):
+  - Current rally length (how many consecutive hits this round)
+  - Longest rally of the match
+  - Ball speed right now (px/frame)
+  - Player 1 hit count / Player 2 hit count
+  - Power-ups collected per player
+  - Longest freeze duration applied
+
+  PERSISTENT HALL OF FAME (hall_of_fame.json):
+  - Saved to local file in same directory as script
+  - Tracks: player_name, win_score, opponent_score, date, mode,
+    longest_rally, match_duration_seconds
+  - Top 10 entries stored
+  - Hall of Fame screen renders a styled ASCII table of records
+  - Entries sorted by win margin (dominant wins ranked higher)
+  - On new entry: animated "NEW RECORD!" flash
+
+═══════════════════════════════════════════════════════════
+          SECTION 12: SOUND ENGINE (class SoundEngine)
+═══════════════════════════════════════════════════════════
+
+  Implement PURELY via standard library (no pygame.mixer):
+
+  ON WINDOWS: Use winsound.Beep(frequency, duration_ms)
+  ON MAC/LINUX: Use os.system("afplay" / "aplay") with 
+  generated temp WAV files using the `wave` + `struct` modules
+
+  SOUND EVENTS:
+  ┌────────────────────┬──────────┬──────────────────────────┐
+  │ Event              │ Windows  │ Description              │
+  ├────────────────────┼──────────┼──────────────────────────┤
+  │ Ball hits paddle   │ 480 Hz   │ Short crisp click        │
+  │ Ball hits wall     │ 280 Hz   │ Low thud                 │
+  │ Score point        │ 880 Hz   │ Rising 3-note arpeggio   │
+  │ Power-up spawn     │ 660 Hz   │ Magical shimmer          │
+  │ Power-up collect   │ 1047 Hz  │ Bright collection chime  │
+  │ Game won           │ 523-784  │ Victory fanfare sequence │
+  │ Match point alert  │ 660 Hz   │ Tension drone            │
+  └────────────────────┴──────────┴──────────────────────────┘
+
+  - Run sounds in a separate THREAD (threading.Thread) so they 
+    never block the game loop
+  - SoundEngine has enable/disable toggle (press M to mute)
+  - Volume conceptually controlled by frequency duration length
+  - Mute icon shown in corner when muted
+
+═══════════════════════════════════════════════════════════
+        SECTION 13: SETTINGS SCREEN
+═══════════════════════════════════════════════════════════
+
+  A navigable settings menu (keyboard driven):
+
+  ┌─────────────────────────────────────────┐
+  │            ⚙  SETTINGS                 │
+  │                                         │
+  │  Win Score        [7] [11] [15] [21]   │
+  │  AI Difficulty    [EASY][MED][HARD][∞] │
+  │  Ball Speed       [SLOW][NORM][FAST]   │
+  │  Power-Ups        [ON]  [OFF]          │
+  │  Sound            [ON]  [OFF]          │
+  │  Background       [SPACE][DARK][NEON]  │
+  │  Controls         [WASD+ARROWS][REMAP] │
+  │                                         │
+  │  [ENTER] Save & Back    [ESC] Discard  │
+  └─────────────────────────────────────────┘
+
+  - Navigate with arrow keys, select with Enter
+  - Active option highlighted with glow
+  - Changes reflected live (ball speed change shows preview ball)
+  - Settings saved to settings.json and loaded on startup
+
+═══════════════════════════════════════════════════════════
+        SECTION 14: PAUSE SYSTEM
+═══════════════════════════════════════════════════════════
+
+  Press P or SPACE to pause during gameplay:
+
+  - Game state FREEZES (all movement stops instantly)
+  - Semi-transparent dark overlay drawn over entire screen
+    (simulate with many overlapping low-alpha rectangles)
+  - Pause menu appears with options:
+      ┌─────────────────────┐
+      │     ⏸  PAUSED       │
+      │                     │
+      │  [R] Resume         │
+      │  [S] Stats          │
+      │  [M] Mute/Unmute    │
+      │  [Q] Quit to Menu   │
+      └─────────────────────┘
+  - Pressing S in pause shows full in-game stats overlay
+  - Pressing Q returns to main menu (with confirmation prompt)
+
+═══════════════════════════════════════════════════════════
+        SECTION 15: WIN SCREEN & CELEBRATION
+═══════════════════════════════════════════════════════════
+
+  When a player reaches the win score (with MUST_WIN_BY rule):
+
+  PHASE 1 - DRAMATIC MOMENT (0.8 seconds):
+  - Game slow-motion: all speeds divide by 5 for 50 frames
+  - Winning paddle glows intensely (max glow for 50 frames)
+
+  PHASE 2 - VICTORY SCREEN:
+  - Screen transitions with a radial wipe effect (draw expanding 
+    circle covering old screen, in winner's color → then to dark)
+  - Winner's name displayed in HUGE text with color cycling
+  - "WINS THE MATCH!" subtitle in white
+  - Final score displayed centered
+  - Fireworks particle system runs for 6 seconds (from Sec 8)
+  - Looping victory "music" (beep pattern via SoundEngine)
+
+  PHASE 3 - STATS SUMMARY:
+  - After 3 seconds of fireworks, slide in match stats:
+      * Match duration, longest rally, total power-ups used
+      * "Most Dominant Rally" description
+      * Hall of Fame notification if new record
+  
+  PHASE 4 - PROMPT:
+  - [ENTER] Play Again (same settings)
+  - [M] Change Mode
+  - [Q] Main Menu
+
+═══════════════════════════════════════════════════════════
+        SECTION 16: NAME ENTRY SCREEN
+═══════════════════════════════════════════════════════════
+
+  Before a local 2-player game, show animated name entry:
+
+  - Two input fields, one per player
+  - Animated cursor blinking in active field
+  - Field switches on TAB or ENTER
+  - Max 12 characters, alphanumeric
+  - If left blank, defaults to "PLAYER 1" / "PLAYER 2"
+  - Field glows in that player's color when active
+  - "READY!" confirmation animation on both names filled
+
+═══════════════════════════════════════════════════════════
+          SECTION 17: NEON THEME SYSTEM
+═══════════════════════════════════════════════════════════
+
+  Three switchable visual themes (from Settings):
+
+  SPACE (default):
+    bg="#0a0a1a", p1="#00ffff", p2="#ff4da6", ball="#ffffff"
+    Stars background, purple nebulae
+
+  DARK:
+    bg="#111111", p1="#39ff14", p2="#ff6600", ball="#eeeeee"
+    Minimal grid lines in dark gray, no stars
+
+  NEON:
+    bg="#000000", p1="#ff00ff", p2="#ffff00", ball="#00ffff"
+    CRT scanlines effect (horizontal dim lines every 4px)
+    Everything has maximum glow, 8 glow layers per element
+
+  Each theme stores: bg, p1_color, p2_color, ball_color, 
+  accent, divider_color, particle_palette (list of 6 colors)
+  Theme switch is instant, no restart needed.
+
+═══════════════════════════════════════════════════════════
+         SECTION 18: GAME LOOP ARCHITECTURE
+              (class GameEngine)
+═══════════════════════════════════════════════════════════
+
+  The game loop must be PRECISE and FRAME-RATE CONTROLLED:
+
+  def game_loop(self):
+      while self.running:
+          frame_start = time.perf_counter()
+          
+          # 1. Process input (key states, not key events)
+          self.process_input()
+          
+          # 2. Update game state
+          self.update_physics()        # ball, paddles
+          self.update_particles()      # age + move particles
+          self.update_powerups()       # spawn timer, duration
+          self.update_background()     # stars, shooting stars
+          self.update_ui_animations()  # score bounce, glows
+          self.check_collisions()      # paddle, wall, powerup
+          self.check_win_condition()
+          
+          # 3. Render everything
+          self.screen.tracer(0)
+          self.clear_all_turtles()
+          self.render_background()
+          self.render_powerups()
+          self.render_particles()
+          self.render_paddles()
+          self.render_ball()
+          self.render_ui()
+          self.screen.update()
+          
+          # 4. Frame rate control (cap at FPS_TARGET)
+          elapsed = time.perf_counter() - frame_start
+          sleep_time = max(0, (1/FPS_TARGET) - elapsed)
+          time.sleep(sleep_time)
+          
+          # 5. Calculate actual FPS
+          self.actual_fps = 1 / max(elapsed, 0.001)
+
+  KEY STATE SYSTEM:
+  - Use a dictionary: keys_held = {} 
+  - screen.onkeypress(lambda: keys_held.__setitem__('w', True), 'w')
+  - screen.onkeyrelease(lambda: keys_held.pop('w', None), 'w')
+  - Check keys_held in process_input() each frame
+  - This prevents key-repeat lag and allows simultaneous key presses
+
+═══════════════════════════════════════════════════════════
+          SECTION 19: CODE QUALITY REQUIREMENTS
+═══════════════════════════════════════════════════════════
+
+  MANDATORY CODE STANDARDS:
+
+  1. TYPE HINTS on every function signature:
+       def update(self, dt: float) -> None:
+       def predict_ball(self, ball: Ball) -> float:
+
+  2. DOCSTRINGS on every class and method (Google style):
+       """Move paddle toward target with velocity smoothing.
+       
+       Args:
+           target_y: Y coordinate to move toward.
+           dt: Delta time in seconds for frame-rate independence.
+       Returns:
+           None
+       """
+
+  3. SEPARATION OF CONCERNS:
+     - GameEngine never renders directly; delegates to renderers
+     - Physics classes never access screen; return state changes
+     - SoundEngine never blocks; always threaded
+
+  4. ERROR HANDLING:
+     - hall_of_fame.json missing → create empty file gracefully
+     - settings.json corrupt → reset to defaults with warning
+     - winsound unavailable → silent fallback (no crash)
+     - Screen closed mid-game → clean exit via try/except
+
+  5. COMMENTS: Every non-obvious block has a comment explaining
+     WHY, not WHAT (the code shows what; comments explain intent)
+
+  6. NO MAGIC NUMBERS anywhere in the logic code (only in CONFIG)
+
+  7. The file should be self-contained: copy-paste anywhere → runs
+
+═══════════════════════════════════════════════════════════
+               SECTION 20: STRETCH GOALS
+           (implement if possible within single file)
+═══════════════════════════════════════════════════════════
+
+  REPLAY SYSTEM:
+  - Record every frame's ball position and paddle positions
+    into a list of snapshots (capped to last 30 seconds)
+  - On score, auto-replay the last 3 seconds at 0.5x speed
+  - "REPLAY" watermark shown during playback
+  - Stored as [(ball_x, ball_y, p1_y, p2_y, frame_num), ...]
+
+  CONTROL REMAPPING:
+  - Settings page allows pressing a new key for each action
+  - Key capture screen: "Press key for [P1 UP]..."
+  - Saved to settings.json under "controls" key
+
+  ONLINE SCORE SUBMISSION (BONUS):
+  - After game over, offer to submit score to a mock endpoint
+  - Use urllib.request (standard library only!) to POST JSON:
+      { "name": "...", "score": 11, "opponent": 7, "mode": "AI" }
+  - Show "Submitted!" or "Offline Mode" gracefully
+
+═══════════════════════════════════════════════════════════
+                    DELIVERABLES
+═══════════════════════════════════════════════════════════
+
+  FILE: ultimate_pong.py
+  SIZE: Expect 1200–2000 lines of clean, documented code
+  RUN:  python ultimate_pong.py
+  DEPS: ZERO external libraries
+
+  The final result must:
+  ✓ Launch with a full animated main menu
+  ✓ Support 1P vs AI, 2P local, and Tournament modes
+  ✓ Have all 7 power-ups functional
+  ✓ Have particle effects on every impact
+  ✓ Have an AI with 4 difficulty levels + prediction engine
+  ✓ Save/load Hall of Fame and Settings as JSON
+  ✓ Run at stable 60 FPS on a modern machine
+  ✓ Have zero crashes during normal gameplay
+  ✓ Be readable, well-documented, and modifiable
+
+  Do NOT use any library except:
+  turtle, time, math, random, json, os, colorsys, 
+  threading, wave, struct, urllib.request, collections
+
+  Begin with the CONFIG block, then build each class in the 
+  order listed. After each class, add a one-line comment 
+  "# ✓ [ClassName] complete" for verification.
+  
+  Write the COMPLETE file. Do not summarize or skip sections.
+  Every class. Every method. Production-ready code.

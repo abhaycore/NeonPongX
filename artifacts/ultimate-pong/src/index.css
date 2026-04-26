@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Menlo', monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #05050d;
+  color: #e6e6f0;
+  font-family: var(--font-sans);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.glow-cyan {
+  text-shadow:
+    0 0 6px rgba(0, 255, 255, 0.9),
+    0 0 16px rgba(0, 255, 255, 0.6),
+    0 0 36px rgba(0, 255, 255, 0.4);
+}
+.glow-pink {
+  text-shadow:
+    0 0 6px rgba(255, 77, 166, 0.9),
+    0 0 16px rgba(255, 77, 166, 0.6),
+    0 0 36px rgba(255, 77, 166, 0.4);
+}
+.glow-white {
+  text-shadow:
+    0 0 6px rgba(255, 255, 255, 0.9),
+    0 0 16px rgba(255, 255, 255, 0.6);
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+
+@keyframes hue-cycle {
+  0% { filter: hue-rotate(0deg); }
+  100% { filter: hue-rotate(360deg); }
+}
+.animate-hue-cycle { animation: hue-cycle 6s linear infinite; }
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float-y { animation: float-y 3s ease-in-out infinite; }
+
+button { font-family: inherit; }
+
+input, button {
+  outline: none;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0a0a1a; }
+::-webkit-scrollbar-thumb { background: #1c1c2e; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #2c2c4e; }
