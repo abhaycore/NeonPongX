@@ -37,6 +37,8 @@ export const CONFIG = {
   MUTLI_BALL_COUNT: 2,
   GHOST_DURATION: 3000,
   FREEZE_DURATION: 3000,
+  // Background animation speed multiplier
+  BG_SPEED: 1.25,
 };
 
 const AI_PROFILE: Record<Difficulty, { speed: number; reactionMs: number; error: number }> = {
@@ -60,10 +62,12 @@ const POWERUP_TYPES: PowerUpType[] = [
 
 interface Star {
   x: number; y: number; size: number; phase: number; speed: number;
+  vx: number; vy: number;
 }
 interface ShootingStar {
   x: number; y: number; vx: number; vy: number; life: number; max: number;
 }
+interface Nebula { x: number; y: number; r: number; color: string; vx: number; vy: number; }
 interface Nebula { x: number; y: number; r: number; color: string; vx: number; vy: number; }
 
 interface Particle {
@@ -157,6 +161,11 @@ export class GameEngine {
   private stars: Star[] = [];
   private shootingStars: ShootingStar[] = [];
   private nebulae: Nebula[] = [];
+  // pointer state for interactive background
+  private mouseX = -9999;
+  private mouseY = -9999;
+  private mouseLastMove = 0;
+  private _onPointerMove: ((e: PointerEvent) => void) | null = null;
 
   // timing
   private rafId = 0;
@@ -213,6 +222,15 @@ export class GameEngine {
 
     this.resize();
     this.initBackground();
+    // pointer tracking for interactive star behavior
+    this._onPointerMove = (e: PointerEvent) => {
+      const rect = this.canvas.getBoundingClientRect();
+      const scaleX = this.W / rect.width; const scaleY = this.H / rect.height;
+      this.mouseX = (e.clientX - rect.left) * scaleX;
+      this.mouseY = (e.clientY - rect.top) * scaleY;
+      this.mouseLastMove = performance.now();
+    };
+    window.addEventListener("pointermove", this._onPointerMove);
     this.initPaddles(p1Name, p2Name);
     this.resetBall(true);
     this.matchStarted = performance.now();
@@ -268,6 +286,8 @@ export class GameEngine {
         size: rand(0.5, 2.4),
         phase: rand(0, Math.PI * 2),
         speed: rand(0.6, 2.2),
+        vx: rand(-0.2, 0.2),
+        vy: rand(-0.2, 0.2),
       });
     }
     this.nebulae = [];
@@ -322,6 +342,10 @@ export class GameEngine {
   stop() {
     this.running = false;
     cancelAnimationFrame(this.rafId);
+    if (this._onPointerMove) {
+      window.removeEventListener("pointermove", this._onPointerMove);
+      this._onPointerMove = null;
+    }
   }
 
   // ---------- TICK ----------
@@ -364,8 +388,8 @@ export class GameEngine {
       this.shootingStars.push({
         x: rand(0, this.W * 0.5),
         y: rand(0, this.H * 0.4),
-        vx: rand(6, 12),
-        vy: rand(2, 5),
+        vx: rand(6, 12) * CONFIG.BG_SPEED,
+        vy: rand(2, 5) * CONFIG.BG_SPEED,
         life: 0, max: 50,
       });
     }
@@ -380,6 +404,65 @@ export class GameEngine {
       if (n.x > this.W + n.r) n.x = -n.r;
       if (n.y < -n.r) n.y = this.H + n.r;
       if (n.y > this.H + n.r) n.y = -n.r;
+    }
+
+    // Move stars with simple physics
+    const now = performance.now();
+    for (const s of this.stars) {
+      s.x += s.vx * dt * 30; s.y += s.vy * dt * 30; // scale movement for visible effect
+      // wrap around
+      if (s.x < -8) s.x = this.W + 8;
+      if (s.x > this.W + 8) s.x = -8;
+      if (s.y < -8) s.y = this.H + 8;
+      if (s.y > this.H + 8) s.y = -8;
+    }
+
+    // Interactive behavior: when the pointer recently moved, affect nearby stars
+    const recent = now - this.mouseLastMove < 2500;
+    if (recent) {
+      const mx = this.mouseX, my = this.mouseY;
+      const attractRadius = 120; // radius around mouse where stars interact
+      // gather nearby stars
+      const nearby: Star[] = [];
+      for (const s of this.stars) {
+        const dx = s.x - mx, dy = s.y - my;
+        if (dx * dx + dy * dy < attractRadius * attractRadius) nearby.push(s);
+      }
+      if (nearby.length > 0) {
+        // center of mass
+        let cx = 0, cy = 0;
+        for (const s of nearby) { cx += s.x; cy += s.y; }
+        cx /= nearby.length; cy /= nearby.length;
+        // apply attraction to center and slight repulsion from cursor and pairwise separation
+        for (let i = 0; i < nearby.length; i++) {
+          const a = nearby[i];
+          // attraction towards group center (makes them clump)
+          let dx = cx - a.x, dy = cy - a.y; let d = Math.hypot(dx, dy) || 1;
+          a.vx += (dx / d) * 0.02 * dt;
+          a.vy += (dy / d) * 0.02 * dt;
+          // repel from mouse to simulate collision with cursor if too close
+          const mdx = a.x - mx, mdy = a.y - my; const md = Math.hypot(mdx, mdy) || 1;
+          if (md < 28) {
+            const f = (28 - md) / 28;
+            a.vx += (mdx / md) * (0.9 * f + 0.1);
+            a.vy += (mdy / md) * (0.9 * f + 0.1);
+          }
+          // mild damping
+          a.vx *= 0.98; a.vy *= 0.98;
+          // pairwise separation to avoid overlap
+          for (let j = i + 1; j < nearby.length; j++) {
+            const b = nearby[j];
+            const ddx = a.x - b.x, ddy = a.y - b.y; const dist = Math.hypot(ddx, ddy) || 1;
+            const minD = (a.size + b.size) * 6; // separation threshold scaled for visibility
+            if (dist < minD && dist > 0) {
+              const sep = (minD - dist) / minD * 0.5;
+              const nx = ddx / dist, ny = ddy / dist;
+              a.vx += nx * sep * 0.6; a.vy += ny * sep * 0.6;
+              b.vx -= nx * sep * 0.6; b.vy -= ny * sep * 0.6;
+            }
+          }
+        }
+      }
     }
   }
 
@@ -804,7 +887,7 @@ export class GameEngine {
     for (let i = 0; i < count; i++) {
       this.particles.push({
         x, y,
-        vx: rand(-3.5, 3.5), vy: rand(-3.5, 3.5),
+        vx: rand(-3.5, 3.5) * CONFIG.BG_SPEED, vy: rand(-3.5, 3.5) * CONFIG.BG_SPEED,
         life: CONFIG.PARTICLE_LIFE, max: CONFIG.PARTICLE_LIFE,
         size: rand(2, 4),
         cs: c, ce: [c[0] * 0.2, c[1] * 0.2, c[2] * 0.2],
@@ -819,7 +902,7 @@ export class GameEngine {
       const sp = rand(2, 6);
       this.particles.push({
         x, y,
-        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        vx: Math.cos(a) * sp * CONFIG.BG_SPEED, vy: Math.sin(a) * sp * CONFIG.BG_SPEED,
         life: 70, max: 70, size: rand(2, 5),
         cs: c, ce: [255, 255, 255], gravity: 0.05,
       });
@@ -834,7 +917,7 @@ export class GameEngine {
       const a = (i / 35) * Math.PI * 2 + rand(-0.1, 0.1);
       const sp = rand(2.5, 5.5);
       this.particles.push({
-        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        x, y, vx: Math.cos(a) * sp * CONFIG.BG_SPEED, vy: Math.sin(a) * sp * CONFIG.BG_SPEED,
         life: 90, max: 90, size: rand(2, 4),
         cs: c, ce: [10, 10, 30], gravity: 0.06,
       });
